@@ -28,9 +28,8 @@ uses Console;
 begin
   TConsole.ClearScreen();
   TConsole.SetTitle('Demo');
-  TConsole.SetForegroundColor('bright-green');
   TConsole.PrintLn('Welcome to Console!');
-  TConsole.Teletype('Simulated output... one char at a time.', 'bright-yellow');
+  TConsole.Teletype(CSIFGGreen+'Simulated output... one char at a time.');
   TConsole.WaitForAnyKey();
 end.
 ```
