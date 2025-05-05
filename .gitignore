@@ -79,3 +79,6 @@ __recovery/
 
 # Boss dependency manager vendor folder https://github.com/HashLoad/boss
 modules/
+
+*.dsv
+zip_latest_commit.cmd
