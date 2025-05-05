@@ -458,7 +458,7 @@ begin
   // Initialize point arrays
   SetLength(Points, ConsoleWidth * ConsoleHeight);    // Max possible
   SetLength(LastPoints, ConsoleWidth * ConsoleHeight);
-  PointCount := 0;
+  //PointCount := 0;
   LastPointCount := 0;
 
   // Setup timing
@@ -644,8 +644,8 @@ var
     EndX, EndY: Integer;
     NewLength: Double;
     NewAngle1, NewAngle2: Double;
-    I, IntX, IntY: Integer;
-    LastX, LastY: Integer;
+    {I,} IntX, IntY: Integer;
+    {LastX, LastY: Integer;}
     Color: string;
     Ch: Char;
   begin
@@ -1169,7 +1169,7 @@ var
   OriginalTitle: string;
   StartTime, CurrentTime, LastFrameTime: TDateTime;
   ElapsedMs, FrameTimeMs: Int64;
-  X, Y, Value, LastValue: Integer;
+  X, Y{, Value, LastValue}: Integer;
   LastChar: array of array of Char;
   LastColor: array of array of string;
 
@@ -1641,7 +1641,7 @@ var
   StartTime, CurrentTime, LastFrameTime: TDateTime;
   ElapsedMs, FrameTimeMs: Int64;
   I, X, Y, Distance, BufferIndex: Integer;
-  Angle: Double;
+  {Angle: Double;}
   InfoString: string;
 begin
   ClearInput();
@@ -1989,7 +1989,7 @@ const
   FPS = 30; // Target frames per second
 var
   StartTime, EndTime, CurrentTime, LastFrameTime: TDateTime;
-  ElapsedMs, TotalMs, FrameMs, TargetFrameTimeMs: Int64;
+  ElapsedMs, TotalMs, {FrameMs,} TargetFrameTimeMs: Int64;
   T: Double;
   XPos, YPos: Double;
   IntX, IntY: Integer;
@@ -2041,7 +2041,7 @@ begin
 
   // Animation parameters
   TotalMs := DURATION_MS;
-  FrameMs := TotalMs div FRAMES;
+  //FrameMs := TotalMs div FRAMES;
   TargetFrameTimeMs := 1000 div FPS; // Time per frame in ms
 
   // Start timer
@@ -2203,13 +2203,13 @@ var
   StartTime, CurrentTime, LastFrameTime: TDateTime;
   ElapsedMs, TotalMs, FrameTime: Int64;
   DemoPhase, LastDemoPhase: Integer;
-  I, X, Y: Integer;
+  {I,} X, Y: Integer;
   RainDrops: array of TRainDrop;
   Fireworks: array of array of TFireworkParticle;
   FireworkCount: Integer;
-  T, Value: Double;
+  T{, Value}: Double;
   Angle, Amplitude: Double;
-  TotalElapsedMs: Int64; // Track total elapsed time across all phases
+  //TotalElapsedMs: Int64; // Track total elapsed time across all phases
   PhaseStartTime: TDateTime; // Track when the current phase started
   CompletedPhases: Integer; // Track number of completed phases
 
@@ -2380,13 +2380,13 @@ var
   procedure UpdateFireworks;
   var
     F, P, IntX, IntY: Integer;
-    ActiveFireworks, FireworkFinished: Boolean;
+    ActiveFireworks{, FireworkFinished}: Boolean;
   begin
     ActiveFireworks := False;
 
     for F := 0 to FireworkCount - 1 do
     begin
-      FireworkFinished := True;
+      //FireworkFinished := True;
 
       for P := 0 to Length(Fireworks[F]) - 1 do
       begin
@@ -2403,7 +2403,7 @@ var
         // Check if particle is still alive
         if Fireworks[F][P].Age < Fireworks[F][P].MaxAge then
         begin
-          FireworkFinished := False;
+          //FireworkFinished := False;
           ActiveFireworks := True;
 
           // Draw particle
@@ -2601,7 +2601,7 @@ begin
     StartTime := Now;
     LastFrameTime := StartTime;
     PhaseStartTime := StartTime;
-    TotalElapsedMs := 0;
+    //TotalElapsedMs := 0;
 
     // Clear screen once at the beginning
     TConsole.ClearScreen;
@@ -2611,7 +2611,7 @@ begin
       // Get current time
       CurrentTime := Now;
       ElapsedMs := Round((CurrentTime - PhaseStartTime) * 24 * 60 * 60 * 1000);
-      TotalElapsedMs := Round((CurrentTime - StartTime) * 24 * 60 * 60 * 1000);
+      //TotalElapsedMs := Round((CurrentTime - StartTime) * 24 * 60 * 60 * 1000);
 
       // Check if it's time for a new phase
       if ElapsedMs >= TotalMs then
@@ -2717,7 +2717,7 @@ var
   StartTime, CurrentTime, LastFrameTime: TDateTime;
   ElapsedMs, FrameTimeMs: Int64;
   CPU, Memory, Disk, Network: TMetric;
-  TabIndex, LastTabIndex: Integer;
+  TabIndex{, LastTabIndex}: Integer;
   ScreenBuffer, LastBuffer: TScreenBuffer;
 
   // Initialize screen buffer
@@ -3303,7 +3303,7 @@ begin
 
   // Initialize metrics and buffers
   TabIndex := 0;
-  LastTabIndex := -1;
+  //LastTabIndex := -1;
 
   // Use Randomize to initialize random number generator
   Randomize;
@@ -3342,7 +3342,7 @@ begin
 
         // Update last frame time and tab
         LastFrameTime := CurrentTime;
-        LastTabIndex := TabIndex;
+        //LastTabIndex := TabIndex;
       end;
 
       // Sleep to reduce CPU usage
@@ -3856,7 +3856,7 @@ var
   // Render the current frame of the current animation
   procedure RenderFrame;
   var
-    i, j: Integer;
+    i{, j}: Integer;
     CurrentFrame: Integer;
     FrameWidth, FrameHeight: Integer;
     CenterX, CenterY: Integer;
@@ -4133,7 +4133,7 @@ var
   ColorCycle: Integer;
   DisplayMode: Integer; // 0=Digital, 1=Analog, 2=Text
   ScreenBuffer, LastBuffer: TScreenBuffer;
-  FirstFrame: Boolean;
+  {FirstFrame: Boolean;}
 
   // Initialize screen buffers
   procedure InitBuffers;
@@ -4388,7 +4388,8 @@ var
   begin
     // Get current date
     DecodeDate(Date, Year, Month, Day);
-    DayOfWeek := DayOfTheWeek(Date);
+    //DayOfWeek := DayOfTheWeek(Date);
+    DayOfWeek := System.SysUtils.DayOfWeek(Date);
 
     // Get month name
     case Month of
@@ -4505,9 +4506,9 @@ var
 
   // Check for ESC key in a more responsive way
   function CheckForExit: Boolean;
-  var
-    StartCheck: TDateTime;
-    CheckDuration: Integer;
+  {var}
+    {StartCheck: TDateTime;}
+    {CheckDuration: Integer;}
   begin
     Result := False;
 
@@ -4548,7 +4549,7 @@ begin
   // Initialize variables
   DisplayMode := 0;
   ColorCycle := 0;
-  FirstFrame := True;
+  //FirstFrame := True;
 
   // Clear screen once
   TConsole.ClearScreen;
@@ -4602,7 +4603,6 @@ begin
     TConsole.ResetTextFormat;
     TConsole.ShowCursor;
     TConsole.SetTitle(OriginalTitle);
-
   end;
 end;
 
@@ -4614,9 +4614,9 @@ begin
 
   TConsole.Pause(True, CSIFGGreen, 'Press any key to start demos...');
 
+  Test_ClockDisplay();
   Test_Dashboard();
   Test_AnimationPlayer();
-  Test_ClockDisplay();
   Test_BouncingText();
   Test_WaveText();
   Test_Kaleidoscope();
