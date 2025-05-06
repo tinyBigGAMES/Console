@@ -86,8 +86,10 @@ end.
 
 ## 🖼️ Media
 **Console demos**
-[![🖥️ Console — Modern Console Power for Delphi. ✨ Print. 🎞️ Animate. 🎮 Control. All in pure 🐘 Pascal.](https://img.youtube.com/vi/RiWU1PSdxKs/maxresdefault.jpg)](https://www.youtube.com/watch?v=RiWU1PSdxKs)  
-<small>*click image to [open video](https://www.youtube.com/watch?v=RiWU1PSdxKs)*</small>
+
+[![🖥️ Console — Modern Console Power for Delphi. ✨ Print. 🎞️ Animate. 🎮 Control. All in pure 🐘 Pascal.](https://img.youtube.com/vi/5NAvbLvyK28/maxresdefault.jpg)](https://www.youtube.com/watch?v=5NAvbLvyK28)  
+<small>*click image to [open video](https://www.youtube.com/watch?v=5NAvbLvyK28)*</small>
+
 
 
 > 🚧️ **This repository is currently under construction.**

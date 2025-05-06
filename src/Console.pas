@@ -16,14 +16,7 @@
 
 unit Console;
 
-{$Z4}
-{$A8}
-
-{$INLINE AUTO}
-
-{$IFNDEF WIN64}
-  {$MESSAGE Error 'Unsupported platform'}
-{$ENDIF}
+{$I Console.Defines.inc}
 
 interface
 
@@ -219,10 +212,7 @@ type
     FPerformanceFrequency: Int64;
     class function EnableVirtualTerminalProcessing(): DWORD; static;
     class function IsStartedFromDelphiIDE(): Boolean; static;
-
-    class function  RandomRange(const aFrom, aTo: Integer): Integer; static;
     class function  RandomBool(): Boolean; static;
-    class procedure Wait(const AMilliseconds: Double); static;
   private
     class constructor Create();
     class destructor Destroy();
@@ -256,72 +246,141 @@ type
     class procedure ProcessMessages(); static;
 
     /// <summary>
+    ///   Returns a random integer between the specified inclusive range.
+    /// </summary>
+    /// <param name="aFrom">
+    ///   The lower bound of the range (inclusive).
+    /// </param>
+    /// <param name="aTo">
+    ///   The upper bound of the range (inclusive).
+    /// </param>
+    /// <returns>
+    ///   A pseudo-random integer in the range <c>aFrom</c> to <c>aTo</c>.
+    /// </returns>
+    /// <remarks>
+    ///   Internally uses the standard Delphi random number generator.
+    /// </remarks>
+    class function RandomRange(const aFrom, aTo: Integer): Integer; static;
+
+    /// <summary>
+    ///   Delays execution for a specified duration in milliseconds.
+    /// </summary>
+    /// <param name="AMilliseconds">
+    ///   The number of milliseconds to wait. Can be fractional.
+    /// </param>
+    /// <remarks>
+    ///   This is a blocking delay and is suitable for animations or pacing output,
+    ///   but not recommended in performance-sensitive loops.
+    /// </remarks>
+    class procedure Wait(const AMilliseconds: Double); static;
+
+    /// <summary>
+    ///   Attempts to set the console screen buffer size.
+    /// </summary>
+    /// <param name="AWidth">
+    ///   The number of character columns for the console buffer.
+    /// </param>
+    /// <param name="AHeight">
+    ///   The number of character rows for the console buffer.
+    /// </param>
+    /// <remarks>
+    ///   Actual support depends on the operating system and console host.
+    ///   May fail or clamp if the requested size exceeds system limits.
+    /// </remarks>
+    class procedure SetSize(const AWidth, AHeight: Integer);
+
+    /// <summary>
     ///   Writes a string to the console without appending a newline character.
     /// </summary>
     /// <param name="AMsg">
-    ///   The message string to write to the console.
+    ///   The message string to output.
+    /// </param>
+    /// <param name="AResetColor">
+    ///   If <c>True</c>, the text formatting will be reset to default after printing.
+    ///   If <c>False</c>, the current console formatting (e.g., color) is preserved.
     /// </param>
     /// <remarks>
-    ///   This method does not move the cursor to a new line after writing.
-    ///   Use <c>PrintLn</c> if you want to include a newline automatically.
+    ///   Useful when printing styled text with the option to automatically reset the color afterward.
     /// </remarks>
-    class procedure Print(const AMsg: string); overload; static;
+    class procedure Print(const AMsg: string; const AResetFormat: Boolean = True); overload; static;
 
     /// <summary>
-    ///   Writes a string to the console and appends a newline character at the end.
+    ///   Writes a string to the console and appends a newline character.
     /// </summary>
     /// <param name="AMsg">
-    ///   The message string to write to the console.
+    ///   The message string to output.
+    /// </param>
+    /// <param name="AResetColor">
+    ///   If <c>True</c>, the text formatting will be reset to default after printing.
+    ///   If <c>False</c>, the current console formatting (e.g., color) is preserved.
     /// </param>
     /// <remarks>
-    ///   This method is equivalent to calling <c>Print</c> followed by a line break.
+    ///   This behaves like <c>Print</c>, but moves the cursor to the next line afterward.
+    ///   Ideal for structured output where styled text needs cleanup.
     /// </remarks>
-    class procedure PrintLn(const AMsg: string); overload; static;
+    class procedure PrintLn(const AMsg: string; const AResetFormat: Boolean = True); overload; static;
 
     /// <summary>
     ///   Writes a formatted message to the console without appending a newline.
     /// </summary>
     /// <param name="AMsg">
-    ///   A format string containing placeholders for argument substitution, similar to <c>Format</c>.
+    ///   A format string containing placeholders for argument substitution (e.g., '%s', '%d').
     /// </param>
     /// <param name="AArgs">
-    ///   An array of values to insert into the placeholders defined in <c>AMsg</c>.
+    ///   An array of values to be inserted into the format string.
+    /// </param>
+    /// <param name="AResetFormat">
+    ///   If <c>True</c>, text formatting (e.g., color, style) is reset to default after output.
+    ///   If <c>False</c>, the current formatting remains unchanged.
     /// </param>
     /// <remarks>
-    ///   This method supports Delphi-style formatting using format specifiers (e.g., <c>%s</c>, <c>%d</c>).
-    ///   The cursor remains on the same line after output.
+    ///   This method supports dynamic text styling with optional automatic formatting reset,
+    ///   making it ideal for partial or styled console output.
     /// </remarks>
-    class procedure Print(const AMsg: string; const AArgs: array of const); overload; static;
+    class procedure Print(const AMsg: string; const AArgs: array of const; const AResetFormat: Boolean = True); overload; static;
 
     /// <summary>
-    ///   Writes a formatted message to the console and appends a newline at the end.
+    ///   Writes a formatted message to the console and appends a newline.
     /// </summary>
     /// <param name="AMsg">
-    ///   A format string containing placeholders for argument substitution, similar to <c>Format</c>.
+    ///   A format string containing placeholders for argument substitution (e.g., '%s', '%d').
     /// </param>
     /// <param name="AArgs">
-    ///   An array of values to insert into the placeholders defined in <c>AMsg</c>.
+    ///   An array of values to be inserted into the format string.
+    /// </param>
+    /// <param name="AResetFormat">
+    ///   If <c>True</c>, text formatting (e.g., color, style) is reset to default after output.
+    ///   If <c>False</c>, the current formatting remains unchanged.
     /// </param>
     /// <remarks>
-    ///   This method behaves like <c>Print</c> but moves the cursor to the next line after writing.
+    ///   This method combines formatted output with line advancement,
+    ///   and optionally resets text appearance after writing.
     /// </remarks>
-    class procedure PrintLn(const AMsg: string; const AArgs: array of const); overload; static;
+    class procedure PrintLn(const AMsg: string; const AArgs: array of const; const AResetFormat: Boolean = True); overload; static;
 
     /// <summary>
     ///   Writes an empty string to the console without appending a newline.
     /// </summary>
+    /// <param name="AResetFormat">
+    ///   If <c>True</c>, resets console formatting (e.g., colors, styles) after printing.
+    ///   If <c>False</c>, preserves the current formatting state.
+    /// </param>
     /// <remarks>
-    ///   This method performs no visible output but can be used to trigger side effects or formatting behavior.
+    ///   Useful as a formatting or state-reset operation without visual output.
     /// </remarks>
-    class procedure Print(); overload; static;
+    class procedure Print(const AResetFormat: Boolean = True); overload; static;
 
     /// <summary>
-    ///   Writes an empty line to the console by outputting a newline character.
+    ///   Writes an empty line (newline only) to the console.
     /// </summary>
+    /// <param name="AResetFormat">
+    ///   If <c>True</c>, resets console formatting (e.g., colors, styles) after printing.
+    ///   If <c>False</c>, preserves the current formatting state.
+    /// </param>
     /// <remarks>
-    ///   This is useful for creating spacing between blocks of text or output sections.
+    ///   Typically used to insert spacing or separate content blocks, with optional formatting reset.
     /// </remarks>
-    class procedure PrintLn(); overload; static;
+    class procedure PrintLn(const AResetFormat: Boolean = True); overload; static;
 
     /// <summary>
     ///   Retrieves the current position of the console cursor.
@@ -924,7 +983,7 @@ end;
 
 class function  TConsole.GetVersion(): string;
 begin
-  Result := '0.1.0';
+  Result := '0.2.0';
 end;
 
 class procedure TConsole.PrintLogo(const AColor: string);
@@ -936,40 +995,98 @@ begin
   PrintLn(AColor+'       Delphi CSI Console');
 end;
 
-class procedure TConsole.Print(const AMsg: string);
+class procedure TConsole.SetSize(const AWidth, AHeight: Integer);
+var
+  HOut: THandle;
+  //Info: CONSOLE_SCREEN_BUFFER_INFO;
+  Rect: TSmallRect;
+  LSize: TCoord;
 begin
-  if not HasOutput() then Exit;
-  Write(AMsg+CSIResetFormat);
+  HOut := GetStdHandle(STD_OUTPUT_HANDLE);
+
+  // Resize screen buffer
+  LSize.X := AWidth;
+  LSize.Y := AHeight;
+  SetConsoleScreenBufferSize(HOut, LSize);
+
+  // Resize window
+  Rect.Left := 0;
+  Rect.Top := 0;
+  Rect.Right := AWidth - 1;
+  Rect.Bottom := AHeight - 1;
+  SetConsoleWindowInfo(HOut, True, Rect);
 end;
 
-class procedure TConsole.PrintLn(const AMsg: string);
+class procedure TConsole.Print(const AMsg: string; const AResetFormat: Boolean);
+var
+  LResetFormat: string;
 begin
   if not HasOutput() then Exit;
-  WriteLn(AMsg+CSIResetFormat);
+  if AResetFormat then
+    LREsetFormat := CSIResetFormat
+  else
+    LResetFormat := '';
+  Write(AMsg+LResetFormat);
 end;
 
-class procedure TConsole.Print(const AMsg: string; const AArgs: array of const);
+class procedure TConsole.PrintLn(const AMsg: string; const AResetFormat: Boolean);
+var
+  LResetFormat: string;
 begin
   if not HasOutput() then Exit;
-  Write(Format(AMsg, AArgs)+CSIResetFormat);
+  if AResetFormat then
+    LREsetFormat := CSIResetFormat
+  else
+    LResetFormat := '';
+  WriteLn(AMsg+LResetFormat);
 end;
 
-class procedure TConsole.PrintLn(const AMsg: string; const AArgs: array of const);
+class procedure TConsole.Print(const AMsg: string; const AArgs: array of const; const AResetFormat: Boolean);
+var
+  LResetFormat: string;
 begin
   if not HasOutput() then Exit;
-  WriteLn(Format(AMsg, AArgs)+CSIResetFormat);
+  if AResetFormat then
+    LREsetFormat := CSIResetFormat
+  else
+    LResetFormat := '';
+  Write(Format(AMsg, AArgs)+LResetFormat);
 end;
 
-class procedure TConsole.Print();
+class procedure TConsole.PrintLn(const AMsg: string; const AArgs: array of const; const AResetFormat: Boolean);
+var
+  LResetFormat: string;
 begin
   if not HasOutput() then Exit;
-  Write(CSIResetFormat);
+  if AResetFormat then
+    LREsetFormat := CSIResetFormat
+  else
+    LResetFormat := '';
+  WriteLn(Format(AMsg, AArgs)+LResetFormat);
 end;
 
-class procedure TConsole.PrintLn();
+class procedure TConsole.Print(const AResetFormat: Boolean);
+var
+  LResetFormat: string;
 begin
   if not HasOutput() then Exit;
-  WriteLn(CSIResetFormat);
+  if AResetFormat then
+    LREsetFormat := CSIResetFormat
+  else
+    LResetFormat := '';
+  Write(LResetFormat);
+end;
+
+class procedure TConsole.PrintLn(const AResetFormat: Boolean);
+var
+  LResetFormat: string;
+begin
+  if not HasOutput() then Exit;
+  if AResetFormat then
+    LREsetFormat := CSIResetFormat
+  else
+    LResetFormat := '';
+  WriteLn(LResetFormat);
 end;
 
 class procedure TConsole.GetCursorPos(X, Y: PInteger);

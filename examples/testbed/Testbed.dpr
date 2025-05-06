@@ -22,7 +22,16 @@ program Testbed;
 uses
   System.SysUtils,
   Console in '..\..\src\Console.pas',
-  UTestbed in 'UTestbed.pas';
+  UTestbed in 'UTestbed.pas',
+  Console.Buffer in '..\..\src\Console.Buffer.pas',
+  UDemo.Buffer in 'UDemo.Buffer.pas',
+  UDemo.SpaceInvaders in 'UDemo.SpaceInvaders.pas',
+  UDemo.StellarAssault in 'UDemo.StellarAssault.pas',
+  UDemo.Sprite in 'UDemo.Sprite.pas',
+  UDemo.StellarDefender in 'UDemo.StellarDefender.pas',
+  UDemo.Effects in 'UDemo.Effects.pas',
+  UCommon in 'UCommon.pas',
+  Console.Sprite in '..\..\src\Console.Sprite.pas';
 
 begin
   try
