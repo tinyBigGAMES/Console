@@ -21,6 +21,7 @@ uses
   WinApi.Windows,
   System.SysUtils,
   Console,
+  Console.Buffer,
   UCommon,
   UDemo.Effects,
   UDemo.Buffer,
@@ -36,7 +37,7 @@ implementation
 procedure RunTests();
 const
   // Menu constants
-  MENU_ITEMS_COUNT = 20;
+  MENU_ITEMS_COUNT = 21;
   MENU_START_Y = 7;
 
   // Colors
@@ -66,6 +67,7 @@ type
     dtStellarAssault,
     dtSpaceInvaders,
     dtStellarDefender,
+    dtPipeWrite,
     dtQuit
   );
 
@@ -220,9 +222,13 @@ var
     MenuItems[18].DemoType := dtStellarDefender;
     MenuItems[18].ShortcutKey := 'J';
 
-    MenuItems[19].Title := 'Quit';
-    MenuItems[19].DemoType := dtQuit;
-    MenuItems[19].ShortcutKey := 'Q';
+    MenuItems[19].Title := 'Pipe Write Demo';
+    MenuItems[19].DemoType := dtPipeWrite;
+    MenuItems[19].ShortcutKey := 'K';
+
+    MenuItems[20].Title := 'Quit';
+    MenuItems[20].DemoType := dtQuit;
+    MenuItems[20].ShortcutKey := 'Q';
   end;
 
   // Run the selected demo
@@ -234,25 +240,26 @@ var
 
     // Run the selected demo
     case MenuItems[CurrentSelection].DemoType of
-      dtClockDisplay:      Demo_ClockDisplay();
-      dtDashboard:         Demo_Dashboard();
-      dtAnimationPlayer:   Demo_AnimationPlayer();
-      dtBouncingText:      Demo_BouncingText();
-      dtWaveText:          Demo_WaveText();
-      dtKaleidoscope:      Demo_Kaleidoscope();
-      dtFractalTree:       Demo_FractalTree();
-      dtRainEffect:        Demo_RainEffect();
-      dtFireEffect:        Demo_FireEffect();
-      dtParticleSystem:    Demo_ParticleSystem();
-      dtColorTunnel:       Demo_ColorTunnel();
-      dtFlowingText:       Demo_FlowingText();
+      dtClockDisplay:       Demo_ClockDisplay();
+      dtDashboard:          Demo_Dashboard();
+      dtAnimationPlayer:    Demo_AnimationPlayer();
+      dtBouncingText:       Demo_BouncingText();
+      dtWaveText:           Demo_WaveText();
+      dtKaleidoscope:       Demo_Kaleidoscope();
+      dtFractalTree:        Demo_FractalTree();
+      dtRainEffect:         Demo_RainEffect();
+      dtFireEffect:         Demo_FireEffect();
+      dtParticleSystem:     Demo_ParticleSystem();
+      dtColorTunnel:        Demo_ColorTunnel();
+      dtFlowingText:        Demo_FlowingText();
       dtAdvancedAnimations: Demo_AdvancedAnimations();
       dtAdvancedEffects:    Demo_AdvancedEffects();
-      dtAsciiBuffer:       Demo_AsciiBuffer();
-      dtSprite:            Demo_Sprite();
-      dtStellarAssault:    Demo_StellarAssault();
-      dtSpaceInvaders:     Demo_SpaceInvaders();
-      dtStellarDefender:   Demo_StellarDefender();
+      dtAsciiBuffer:        Demo_AsciiBuffer();
+      dtSprite:             Demo_Sprite();
+      dtStellarAssault:     Demo_StellarAssault();
+      dtSpaceInvaders:      Demo_SpaceInvaders();
+      dtStellarDefender:    Demo_StellarDefender();
+      dtPipeWrite:          Demo_PipeWrite();
       dtQuit:
       begin
        LDone := True;

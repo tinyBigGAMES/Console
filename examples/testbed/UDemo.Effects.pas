@@ -26,6 +26,7 @@ uses
   UCommon;
 
 
+procedure Demo_PipeWrite();
 procedure Demo_ClockDisplay();
 procedure Demo_Dashboard();
 procedure Demo_AnimationPlayer();
@@ -42,6 +43,24 @@ procedure Demo_AdvancedAnimations();
 procedure Demo_AdvancedEffects();
 
 implementation
+
+procedure Demo_PipeWrite;
+var
+  FG, BG: integer;
+  LLine: string;
+begin
+  TConsole.SetTitle('TConsole: PipeWrite Demo');
+
+  for FG := 0 to 15 do
+  begin
+    TConsole.PipeWrite('|B0|%2.2d ', [FG]);
+    for BG := 0 to 7 do
+      TConsole.PipeWrite('|%2.2d|B%dABC|B0 ', [FG, BG]);
+    Writeln;
+  end;
+
+  TConsole.Pause();
+end;
 
 // Bouncing Text Demo with Flicker-Free Rendering
 procedure Demo_BouncingText;
@@ -2724,8 +2743,8 @@ type
 var
   ConsoleWidth, ConsoleHeight: Integer;
   OriginalTitle: string;
-  StartTime, CurrentTime, LastFrameTime: TDateTime;
-  ElapsedMs, FrameTimeMs: Int64;
+  StartTime, CurrentTime{, LastFrameTime}: TDateTime;
+  ElapsedMs{, FrameTimeMs}: Int64;
   CPU, Memory, Disk, Network: TMetric;
   TabIndex: Integer;
 
@@ -3190,7 +3209,7 @@ begin
 
   // Setup timing
   StartTime := Now;
-  LastFrameTime := StartTime;
+  //LastFrameTime := StartTime;
 
   // Main loop
   try

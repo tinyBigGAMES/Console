@@ -383,6 +383,75 @@ type
     class procedure PrintLn(const AResetFormat: Boolean = True); overload; static;
 
     /// <summary>
+    ///   Writes a formatted string to the console by interpreting BBC-style pipe codes.
+    /// </summary>
+    /// <param name="AMsg">
+    ///   The message string containing embedded pipe codes (e.g., <c>|01</c>, <c>|#B</c>, <c>|@10,5</c>).
+    /// </param>
+    /// <remarks>
+    ///   This method parses and translates embedded formatting codes into ANSI escape sequences
+    ///   to control color, style, and cursor behavior in the console.
+    ///
+    ///   Supported pipe codes include:
+    ///   <list type="bullet">
+    ///     <item><c>|00</c> through <c>|15</c> — Foreground color codes</item>
+    ///     <item><c>|B0</c> through <c>|B7</c> — Background color codes</item>
+    ///     <item><c>|#B</c>, <c>|#I</c>, <c>|#U</c> — Bold, Italic, Underline text styles</item>
+    ///     <item><c>|@X,Y</c> — Cursor positioning</item>
+    ///     <item><c>|CL</c>, <c>|CE</c> — Clear screen or clear to end of line</item>
+    ///     <item><c>||</c> — Escaped literal pipe character</item>
+    ///   </list>
+    ///
+    ///   This allows for readable and compact markup of richly styled console output.
+    /// </remarks>
+    class procedure PipeWrite(const AMsg: string); overload; static;
+
+    /// <summary>
+    ///   Writes a formatted string to the console using pipe codes and appends a newline at the end.
+    /// </summary>
+    /// <param name="AMsg">
+    ///   The message string containing embedded pipe codes (e.g., <c>|#B</c>, <c>|12</c>, <c>|@5,2</c>).
+    /// </param>
+    /// <remarks>
+    ///   Behaves identically to <c>PipeWrite</c> but automatically appends a line break.
+    ///   This makes it convenient for structured output where each call ends a line.
+    /// </remarks>
+    class procedure PipeWriteLn(const AMsg: string); overload; static;
+
+    /// <summary>
+    ///   Writes a formatted string to the console using pipe codes and format arguments.
+    /// </summary>
+    /// <param name="AMsg">
+    ///   A message string containing BBC-style pipe codes (e.g., <c>|#B</c>, <c>|12</c>, <c>|@X,Y</c>)
+    ///   along with Delphi-style format placeholders (e.g., <c>%s</c>, <c>%d</c>).
+    /// </param>
+    /// <param name="AArgs">
+    ///   An array of values to substitute into the format placeholders in <c>AMsg</c>.
+    /// </param>
+    /// <remarks>
+    ///   This method first applies Delphi-style formatting (via <c>Format</c>), then processes
+    ///   the result for pipe codes, converting them into ANSI escape sequences.
+    ///   Allows for dynamically styled output using values at runtime.
+    /// </remarks>
+    class procedure PipeWrite(const AMsg: string; const AArgs: array of const); overload; static;
+
+    /// <summary>
+    ///   Writes a formatted string to the console using pipe codes and format arguments,
+    ///   and appends a newline character.
+    /// </summary>
+    /// <param name="AMsg">
+    ///   A message string with pipe codes and format placeholders.
+    /// </param>
+    /// <param name="AArgs">
+    ///   An array of values to substitute into the format placeholders in <c>AMsg</c>.
+    /// </param>
+    /// <remarks>
+    ///   This behaves like <c>PipeWrite</c> but automatically moves the cursor to a new line
+    ///   after output. Useful for structured or multiline output with formatting.
+    /// </remarks>
+    class procedure PipeWriteLn(const AMsg: string; const AArgs: array of const); overload; static;
+
+    /// <summary>
     ///   Retrieves the current position of the console cursor.
     /// </summary>
     /// <param name="X">
@@ -1087,6 +1156,183 @@ begin
   else
     LResetFormat := '';
   WriteLn(LResetFormat);
+end;
+
+class procedure TConsole.PipeWrite(const AMsg: string);
+const
+  // Foreground colors (regular 0-7, bright 8-15)
+  FGMap: array[0..15] of string = (
+    '30', '34', '32', '36', '31', '35', '33', '37',
+    '90', '94', '92', '96', '91', '95', '93', '97'
+  );
+  // Background colors
+  BGMap: array[0..7] of string = (
+    '40', '44', '42', '46', '41', '45', '43', '47'
+  );
+var
+  i, j, commaPos, ColorNum: Integer;
+  Ch: Char;
+  Code, xStr, yStr: string;
+  Output: string;
+  x, y: Integer;
+  DigitSet: TSysCharSet;
+begin
+  if not HasOutput() then Exit;
+
+  DigitSet := ['0'..'9'];
+  i := 1;
+  Output := '';
+
+  while i <= Length(AMsg) do
+  begin
+    Ch := AMsg[i];
+    if (Ch = '|') and (i < Length(AMsg)) then
+    begin
+      // Lookahead
+      if AMsg[i + 1] = '|' then
+      begin
+        Output := Output + '|'; // literal |
+        Inc(i, 2);
+        Continue;
+      end
+      else if (i + 2 <= Length(AMsg)) then
+      begin
+        Code := Copy(AMsg, i + 1, 2);
+
+        // Reset: |00 - Reset all attributes
+        if (Code = '00') then
+        begin
+          Output := Output + #27 + '[0m';
+          Inc(i, 3);
+          Continue;
+        end
+        // Foreground: |01 to |15
+        else if TryStrToInt(Code, ColorNum) and (ColorNum >= 0) and (ColorNum <= 15) then
+        begin
+          Output := Output + #27 + '[' + FGMap[ColorNum] + 'm';
+          Inc(i, 3);
+          Continue;
+        end
+        // Background: |B0 to |B7
+        else if (UpCase(Code[1]) = 'B') and CharInSet(Code[2], ['0'..'7']) then
+        begin
+          Output := Output + #27 + '[' + BGMap[Ord(Code[2]) - Ord('0')] + 'm';
+          Inc(i, 3);
+          Continue;
+        end
+        // Bold: |#B
+        else if (Code = '#B') then
+        begin
+          Output := Output + #27 + '[1m';
+          Inc(i, 3);
+          Continue;
+        end
+        // Dim: |#D
+        else if (Code = '#D') then
+        begin
+          Output := Output + #27 + '[2m';
+          Inc(i, 3);
+          Continue;
+        end
+        // Italic: |#I
+        else if (Code = '#I') then
+        begin
+          Output := Output + #27 + '[3m';
+          Inc(i, 3);
+          Continue;
+        end
+        // Underline: |#U
+        else if (Code = '#U') then
+        begin
+          Output := Output + #27 + '[4m';
+          Inc(i, 3);
+          Continue;
+        end
+        // Blink: |#F (Flash)
+        else if (Code = '#F') then
+        begin
+          Output := Output + #27 + '[5m';
+          Inc(i, 3);
+          Continue;
+        end
+        // Inverse: |#R (Reverse)
+        else if (Code = '#R') then
+        begin
+          Output := Output + #27 + '[7m';
+          Inc(i, 3);
+          Continue;
+        end
+        // Strikethrough: |#S
+        else if (Code = '#S') then
+        begin
+          Output := Output + #27 + '[9m';
+          Inc(i, 3);
+          Continue;
+        end
+        // Cursor positioning: |@X,Y
+        else if (Code[1] = '@') and (i + 2 < Length(AMsg)) then
+        begin
+          // Look for the Y coordinate after the comma
+          j := i + 2;
+          //commaPos := 0;
+          while (j <= Length(AMsg)) and (AMsg[j] <> ',') do
+            Inc(j);
+
+          if (j < Length(AMsg)) then
+          begin
+            commaPos := j;
+            xStr := Copy(AMsg, i + 2, commaPos - (i + 2));
+            y := j + 1;
+            j := y;
+
+            while (j <= Length(AMsg)) and CharInSet(AMsg[j], DigitSet) do
+              Inc(j);
+
+            yStr := Copy(AMsg, y, j - y);
+
+            if TryStrToInt(xStr, x) and TryStrToInt(yStr, y) then
+            begin
+              Output := Output + #27 + '[' + IntToStr(y) + ';' + IntToStr(x) + 'H';
+              i := j;
+              Continue;
+            end;
+          end;
+        end
+        // Clear screen: |CL
+        else if (Code = 'CL') then
+        begin
+          Output := Output + #27 + '[2J' + #27 + '[H';  // Clear screen and home cursor
+          Inc(i, 3);
+          Continue;
+        end
+        // Clear to end of line: |CE
+        else if (Code = 'CE') then
+        begin
+          Output := Output + #27 + '[K';
+          Inc(i, 3);
+          Continue;
+        end;
+      end;
+    end;
+    Output := Output + Ch;
+    Inc(i);
+  end;
+  Write(Output);
+end;
+
+class procedure TConsole.PipeWriteLn(const AMsg: string);
+begin
+  PipeWrite(AMsg + sLineBreak);
+end;
+
+class procedure TConsole.PipeWrite(const AMsg: string; const AArgs: array of const);
+begin
+  PipeWrite(Format(AMsg, AArgs));
+end;
+
+class procedure TConsole.PipeWriteLn(const AMsg: string; const AArgs: array of const);
+begin
+  PipeWriteLn(Format(AMsg, AArgs));
 end;
 
 class procedure TConsole.GetCursorPos(X, Y: PInteger);
