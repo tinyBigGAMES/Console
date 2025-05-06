@@ -47,10 +47,23 @@ implementation
 procedure Demo_PipeWrite;
 var
   FG, BG: integer;
-  LLine: string;
 begin
   TConsole.SetTitle('TConsole: PipeWrite Demo');
 
+  // Add a simple diagnostic header with clearly different colors
+  TConsole.PipeWriteLn('Testing color |09bright blue|00 and |02green|00 and |#Bbold|00 separately');
+
+  // Try the title with a bright blue color instead of white
+  TConsole.PipeWriteLn('|09Color Formatting Demo - Foreground (rows) x Background (columns) ===|00');
+
+  // Try bold formatting with green color
+  TConsole.PipeWriteLn('|02|#BColor Formatting Demo|00 - |04Foreground (rows) x Background (columns)|00');
+  TConsole.PrintLn();
+
+  // Original description line with a different color
+  TConsole.PipeWriteLn('|03This demonstrates all 16 foreground colors (0-15) with all 8 background colors (0-7)|00');
+
+  // Original color matrix (which works)
   for FG := 0 to 15 do
   begin
     TConsole.PipeWrite('|B0|%2.2d ', [FG]);
