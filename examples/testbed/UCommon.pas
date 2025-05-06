@@ -22,6 +22,7 @@ uses
   Console;
 
 procedure ClearInput();
+function  IfThen(const Condition: Boolean; const TrueValue, FalseValue: string): string;
 
 implementation
 
@@ -32,6 +33,14 @@ begin
     TConsole.ProcessMessages();
   end;
   TConsole.ClearKeyStates();
+end;
+
+function IfThen(const Condition: Boolean; const TrueValue, FalseValue: string): string;
+begin
+  if Condition then
+    Result := TrueValue
+  else
+    Result := FalseValue;
 end;
 
 end.

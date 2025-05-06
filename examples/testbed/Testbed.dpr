@@ -29,7 +29,6 @@ uses
   UDemo.StellarAssault in 'UDemo.StellarAssault.pas',
   UDemo.Sprite in 'UDemo.Sprite.pas',
   UDemo.StellarDefender in 'UDemo.StellarDefender.pas',
-  UDemo.Effects in 'UDemo.Effects.pas',
   UCommon in 'UCommon.pas',
   Console.Sprite in '..\..\src\Console.Sprite.pas';
 

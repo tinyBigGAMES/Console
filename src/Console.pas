@@ -452,6 +452,30 @@ type
     class procedure PipeWriteLn(const AMsg: string; const AArgs: array of const); overload; static;
 
     /// <summary>
+    ///   Retrieves the current text content of the system clipboard.
+    /// </summary>
+    /// <returns>
+    ///   A string containing the clipboard text, or an empty string if the clipboard is empty or contains non-text data.
+    /// </returns>
+    /// <remarks>
+    ///   This method accesses the Windows clipboard and returns Unicode text if available.
+    ///   Use cautiously in high-frequency polling loops, as clipboard access is a shared system resource.
+    /// </remarks>
+    class function GetClipboardText(): string; static;
+
+    /// <summary>
+    ///   Sets the specified text to the system clipboard.
+    /// </summary>
+    /// <param name="AText">
+    ///   The string to place into the clipboard.
+    /// </param>
+    /// <remarks>
+    ///   Replaces any existing clipboard content with the specified text in Unicode format.
+    ///   Can be used to programmatically copy text from a console application.
+    /// </remarks>
+    class procedure SetClipboardText(const AText: string); static;
+
+    /// <summary>
     ///   Retrieves the current position of the console cursor.
     /// </summary>
     /// <param name="X">
@@ -1333,6 +1357,56 @@ end;
 class procedure TConsole.PipeWriteLn(const AMsg: string; const AArgs: array of const);
 begin
   PipeWriteLn(Format(AMsg, AArgs));
+end;
+
+class function TConsole.GetClipboardText: string;
+var
+  Handle: THandle;
+  Ptr: PChar;
+begin
+  Result := '';
+  if not OpenClipboard(0) then Exit;
+  try
+    Handle := GetClipboardData(CF_TEXT);
+    if Handle <> 0 then
+    begin
+      Ptr := GlobalLock(Handle);
+      if Ptr <> nil then
+      begin
+        Result := Ptr;
+        GlobalUnlock(Handle);
+      end;
+    end;
+  finally
+    CloseClipboard;
+  end;
+end;
+
+class procedure TConsole.SetClipboardText(const AText: string);
+var
+  Handle: THandle;
+  Ptr: PChar;
+  Size: Integer;
+begin
+  if not OpenClipboard(0) then Exit;
+  try
+    EmptyClipboard;
+    Size := (Length(AText) + 1) * SizeOf(Char);
+    Handle := GlobalAlloc(GMEM_MOVEABLE, Size);
+    if Handle <> 0 then
+    begin
+      Ptr := GlobalLock(Handle);
+      if Ptr <> nil then
+      begin
+        Move(PChar(AText)^, Ptr^, Size);
+        GlobalUnlock(Handle);
+        SetClipboardData(CF_TEXT, Handle);
+      end else
+        GlobalFree(Handle);
+    end;
+  finally
+    CloseClipboard;
+  end;
 end;
 
 class procedure TConsole.GetCursorPos(X, Y: PInteger);
