@@ -69,7 +69,7 @@ begin
     TConsole.PipeWrite('|B0|%2.2d ', [FG]);
     for BG := 0 to 7 do
       TConsole.PipeWrite('|%2.2d|B%dABC|B0 ', [FG, BG]);
-    Writeln;
+    TConsole.PrintLn();
   end;
 
   TConsole.Pause();

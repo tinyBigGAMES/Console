@@ -555,8 +555,17 @@ begin
     while GameRunning do
     begin
       // Process input
-      if TConsole.IsKeyPressed(VK_ESCAPE) then
-        GameRunning := False;
+      if TConsole.WasKeyPressed(VK_ESCAPE) then
+      begin
+        if GameState = GAME_STATE_PLAYING then
+        begin
+          InitGame();
+          GameState := GAME_STATE_TITLE
+        end
+
+        else
+          GameRunning := False;
+      end;
       
       // Wait for next frame
       if Buffer.BeginFrame then

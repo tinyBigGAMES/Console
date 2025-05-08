@@ -20,6 +20,7 @@ interface
 uses
   WinApi.Windows,
   System.SysUtils,
+  System.Math,
   Console,
   Console.Buffer,
   UCommon,
@@ -33,6 +34,9 @@ uses
 procedure RunTests();
 
 implementation
+
+const
+  CMainMenuTitle = 'TConsole: Main Menu';
 
 procedure RunTests();
 const
@@ -271,6 +275,9 @@ var
 
     // Need to redraw the full menu after returning from a demo
     InitialDraw := True;
+
+    TConsole.SetTitle(CMainMenuTitle);
+    TConsole.HideCursor();
   end;
 
   // Process keyboard input
@@ -332,31 +339,37 @@ var
   end;
 
 begin
-  // Initialize
-  LDone := False;
-  CurrentSelection := 0;
-  LastSelection := 0;
-  InitialDraw := True;
-  InitMenuItems();
+  TConsole.Init(CMainMenuTitle, POS_CENTER, POS_CENTER, 110, 30, 20);
+  try
+    // Initialize
+    LDone := False;
+    CurrentSelection := 0;
+    LastSelection := 0;
+    InitialDraw := True;
+    InitMenuItems();
 
-  // Hide cursor
-  TConsole.HideCursor();
+    // Hide cursor
+    TConsole.HideCursor();
 
-  // Main menu loop
-  while not LDone do
-  begin
-    if InitialDraw then
+    // Main menu loop
+    while not LDone do
     begin
-      DrawMenu(True);  // Full redraw
-      InitialDraw := False;
+      if InitialDraw then
+      begin
+        DrawMenu(True);  // Full redraw
+        InitialDraw := False;
+      end;
+      ProcessInput();
     end;
-    ProcessInput();
+
+    // Clean up
+    TConsole.ShowCursor();
+    TConsole.ClearScreen();
+    TConsole.ResetTextFormat();
+  except
+    TConsole.Shutdown();
   end;
 
-  // Clean up
-  TConsole.ShowCursor();
-  TConsole.ClearScreen();
-  TConsole.ResetTextFormat();
 end;
 
 end.

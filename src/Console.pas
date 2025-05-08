@@ -23,7 +23,8 @@ interface
 uses
   WinApi.Windows,
   WinApi.Messages,
-  System.SysUtils;
+  System.SysUtils,
+  System.Math;
 
 {
   About CSI and Terminal Emulation
@@ -85,6 +86,16 @@ const
   ///   Virtual key code for the ESC key (decimal 27).
   /// </summary>
   VK_ESC = 27;
+
+  /// <summary>
+  ///   Special constant used to indicate that the console window should be centered
+  ///   on screen horizontally or vertically.
+  /// </summary>
+  /// <remarks>
+  ///   When passed as the <c>X</c> or <c>Y</c> position to <c>TConsole.Init</c>,
+  ///   this value causes the window to be automatically centered in that dimension.
+  /// </remarks>
+  POS_CENTER = -1;
 
   // Cursor Movement
   CSICursorPos       = ESC + '[%d;%dH';     // Set cursor to (row, col)
@@ -210,14 +221,73 @@ type
     FTeletypeDelay: Integer;
     FKeyState: array [0..1, 0..255] of Boolean;
     FPerformanceFrequency: Int64;
+    FIsInit: Boolean;
     class function EnableVirtualTerminalProcessing(): DWORD; static;
     class function IsStartedFromDelphiIDE(): Boolean; static;
     class function  RandomBool(): Boolean; static;
   private
     class constructor Create();
     class destructor Destroy();
-    constructor CreateInstance();
   public
+
+    /// <summary>
+    ///   Initializes the console window with a specific title, position, size, font, and font size.
+    /// </summary>
+    /// <param name="ATitle">
+    ///   The title to display in the console window's title bar.
+    /// </param>
+    /// <param name="X">
+    ///   The horizontal screen position (in pixels) of the console window.
+    ///   If <c>X &lt; 0</c>, the window will be horizontally centered.
+    ///   You may also use the <c>POS_CENTER</c> constant to center the window.
+    /// </param>
+    /// <param name="Y">
+    ///   The vertical screen position (in pixels) of the console window.
+    ///   If <c>Y &lt; 0</c>, the window will be vertically centered.
+    ///   You may also use the <c>POS_CENTER</c> constant to center the window.
+    /// </param>
+    /// <param name="AWidth">
+    ///   The width of the console in character columns.
+    /// </param>
+    /// <param name="AHeight">
+    ///   The height of the console in character rows.
+    /// </param>
+    /// <param name="AFontSize">
+    ///   The size (height) of the console font in pixels.
+    /// </param>
+    /// <param name="AFontName">
+    ///   The name of the font to use. If the font is not found or the string is empty,
+    ///   the default console font will be used.
+    ///   Defaults to <c>'Cascadia Mono'</c>.
+    /// </param>
+    /// <returns>
+    ///   <c>True</c> if the console was successfully initialized; otherwise, <c>False</c>.
+    /// </returns>
+    /// <remarks>
+    ///   This method must be called before most <c>TConsole</c> features will function correctly.
+    ///   It creates and configures a dedicated console window under full programmatic control.
+    /// </remarks>
+    class function Init(const ATitle: string; const X, Y, AWidth, AHeight, AFontSize: Integer; const AFontName: string = 'Cascadia Mono'): Boolean; static;
+
+    /// <summary>
+    ///   Indicates whether the console has been successfully initialized using <c>Init</c>.
+    /// </summary>
+    /// <returns>
+    ///   <c>True</c> if the console is active; otherwise, <c>False</c>.
+    /// </returns>
+    /// <remarks>
+    ///   Useful for conditionally executing console-related logic.
+    /// </remarks>
+    class function IsInit(): Boolean; static;
+
+    /// <summary>
+    ///   Shuts down the console and releases all associated system resources.
+    /// </summary>
+    /// <remarks>
+    ///   After calling <c>Shutdown</c>, the console can no longer be used unless reinitialized.
+    ///   Call this method at the end of your application to clean up properly.
+    /// </remarks>
+    class procedure Shutdown(); static;
 
     /// <summary>
     ///   Retrieves the version string of the <c>TConsole</c> class.
@@ -1048,35 +1118,932 @@ end;
 
 class constructor TConsole.Create();
 begin
+  inherited;
+
   FTeletypeDelay := 0;
-
-  // save current console codepage
-  FInputCodePage := GetConsoleCP();
-  FOutputCodePage := GetConsoleOutputCP();
-
-  // set code page to UTF8
-  SetConsoleCP(CP_UTF8);
-  SetConsoleOutputCP(CP_UTF8);
-
-  EnableVirtualTerminalProcessing();
-
+  FIsInit := False;
   QueryPerformanceFrequency(FPerformanceFrequency);
 end;
 
 class destructor TConsole.Destroy();
 begin
-  // restore code page
-  SetConsoleCP(FInputCodePage);
-  SetConsoleOutputCP(FOutputCodePage);
+  Shutdown();
+
+  inherited;
 end;
 
-constructor TConsole.CreateInstance();
+ (*
+class function TConsole.Init(const ATitle: string; const X, Y, AWidth, AHeight, AFontSize: Integer; const AFontName: string): Boolean;
+var
+  hConsole, hInput, hWnd: THandle;
+  BufferSize, MaxSize: TCoord;
+  WindowSize, TempWindowSize: TSmallRect;
+  Style: NativeInt;
+  Mode: DWORD;
+  FontInfo: TConsoleFontInfoEx; // Correct type from Windows unit
+  ColsRows: Boolean;
+  ChosenFontName: string;
+  FontSetSuccess: Boolean;
+  ConsoleCPSet, OutputCPSet: Boolean;
+  InitialWindowRect: TRect;
+  ActualWidth, ActualHeight: Integer;
 begin
+  Result := False;
+
+  // 1. Handle existing console for this process
+  if GetConsoleWindow <> 0 then
+  begin
+    // Attempt to free it. If this process owns it, it should be freed.
+    // If it's inherited and shared, FreeConsole might not be what you want,
+    // but for a new, dedicated console, this is usually the first step.
+    if FreeConsole then
+    begin
+      // Successfully detached.
+      // Give a moment for the system to process this, though usually not needed.
+      // Sleep(10);
+    end;
+
+    // If GetConsoleWindow is still not 0, we couldn't detach or there's another issue.
+    if GetConsoleWindow <> 0 then
+    begin
+      // Consider logging this: 'TConsole.Init: Could not free existing console.'
+      Exit;
+    end;
+  end;
+
+  // 2. Create new private console
+  if not AllocConsole then
+  begin
+    // Consider logging: 'TConsole.Init: AllocConsole failed. Error: ' + SysErrorMessage(GetLastError)
+    Exit; // Cannot proceed without a console
+  end;
+
+  try
+    // 3. Get handles
+    hConsole := GetStdHandle(STD_OUTPUT_HANDLE);
+    hInput := GetStdHandle(STD_INPUT_HANDLE);
+    if (hConsole = INVALID_HANDLE_VALUE) or (hInput = INVALID_HANDLE_VALUE) then
+    begin
+      // Consider logging: 'TConsole.Init: GetStdHandle failed. Error: ' + SysErrorMessage(GetLastError)
+      Exit; // Critical failure
+    end;
+
+    SetConsoleCP(CP_UTF8);
+    SetConsoleOutputCP(CP_UTF8);
+
+
+    // 4. Set Font (CRUCIAL for UTF-8 character rendering)
+    ZeroMemory(@FontInfo, SizeOf(FontInfo));
+    FontInfo.cbSize := SizeOf(FontInfo);
+    FontInfo.dwFontSize.X := 0; // Auto-width based on height for TrueType fonts
+    FontInfo.dwFontSize.Y := AFontSize;
+    FontInfo.FontFamily := FF_MODERN; // Fixed-pitch is generally desired for consoles
+    FontInfo.FontWeight := FW_NORMAL;
+
+    if Trim(AFontName) <> '' then
+      ChosenFontName := AFontName
+    else
+      ChosenFontName := 'Consolas'; // Good default for Unicode, widely available
+
+    StringToWideChar(ChosenFontName, FontInfo.FaceName, LF_FACESIZE);
+
+    FontSetSuccess := SetCurrentConsoleFontEx(hConsole, False, FontInfo);
+    if not FontSetSuccess then
+    begin
+      // Consider logging: 'TConsole.Init: Failed to set font ' + ChosenFontName + '. Error: ' + SysErrorMessage(GetLastError)
+      // Try a known fallback if the primary choice fails
+      if SameText(ChosenFontName, 'Consolas') then // If Consolas itself failed, try Lucida
+        ChosenFontName := 'Lucida Console'
+      else // If user font failed, try Consolas as primary fallback
+        ChosenFontName := 'Consolas';
+
+      StringToWideChar(ChosenFontName, FontInfo.FaceName, LF_FACESIZE);
+      FontSetSuccess := SetCurrentConsoleFontEx(hConsole, False, FontInfo);
+      if not FontSetSuccess then
+      begin
+         // Consider logging: 'TConsole.Init: Failed to set fallback font ' + ChosenFontName + '. Error: ' + SysErrorMessage(GetLastError)
+         // If font setting fails, UTF-8 display will likely be poor. Proceeding, but expect issues.
+      end;
+    end;
+
+    // 5. Set Console Code Pages to UTF-8
+    ConsoleCPSet := SetConsoleCP(CP_UTF8); // For input
+    if not ConsoleCPSet then
+    begin
+      // Consider logging: 'TConsole.Init: SetConsoleCP(CP_UTF8) failed. Error: ' + SysErrorMessage(GetLastError)
+    end;
+
+    OutputCPSet := SetConsoleOutputCP(CP_UTF8); // For output
+    if not OutputCPSet then
+    begin
+      // Consider logging: 'TConsole.Init: SetConsoleOutputCP(CP_UTF8) failed. Error: ' + SysErrorMessage(GetLastError)
+      // If setting output CP to UTF-8 fails, character display will be incorrect. This is a major issue.
+      // You might want to Exit or raise an exception here if UTF-8 is mandatory.
+    end;
+
+    // 6. Hook up standard I/O AFTER setting code pages
+    // This ensures Delphi's RTL uses the correct encoding for WriteLn, ReadLn, etc.
+    AssignFile(Output, 'CONOUT$'); {$WARNINGS OFF} // Suppress warning about open file
+    Rewrite(Output); {$WARNINGS ON}
+    AssignFile(Input, 'CONIN$'); {$WARNINGS OFF}
+    Reset(Input); {$WARNINGS ON}
+    AssignFile(ErrOutput, 'CONOUT$'); {$WARNINGS OFF}
+    Rewrite(ErrOutput); {$WARNINGS ON}
+
+    // 7. Apply Console Mode Settings
+    if GetConsoleMode(hConsole, Mode) then
+    begin
+      Mode := Mode or ENABLE_PROCESSED_OUTPUT or ENABLE_WRAP_AT_EOL_OUTPUT;
+      // Attempt to enable virtual terminal processing for ANSI escape codes (Win10+)
+      Mode := Mode or ENABLE_VIRTUAL_TERMINAL_PROCESSING; // $0004
+      if not SetConsoleMode(hConsole, Mode) then
+      begin
+        // If setting with VT processing failed, try without it (older Windows)
+        if GetConsoleMode(hConsole, Mode) then // Get mode again
+        begin
+           Mode := (Mode and not ENABLE_VIRTUAL_TERMINAL_PROCESSING) // Remove VT flag
+                    or ENABLE_PROCESSED_OUTPUT or ENABLE_WRAP_AT_EOL_OUTPUT; // Ensure basics
+           SetConsoleMode(hConsole, Mode); // Try setting basic modes
+           // Log failure if desired, but proceed
+        end;
+      end;
+    end
+    else
+    begin
+      // Consider logging: 'TConsole.Init: GetConsoleMode failed. Error: ' + SysErrorMessage(GetLastError)
+    end;
+
+    // 8. Set console buffer size and window size
+    // Determine if AWidth/AHeight are columns/rows or pixels
+    // Heuristic: small values are likely columns/rows.
+    // Max console dimensions: MaxSize.X columns, MaxSize.Y rows.
+    MaxSize := GetLargestConsoleWindowSize(hConsole);
+    if (AWidth > 0) and (AWidth <= MaxSize.X) and (AHeight > 0) and (AHeight <= MaxSize.Y) and (AWidth <= 300) and (AHeight <= 200) then // Adjusted heuristic
+      ColsRows := True // Assume AWidth/AHeight are columns/rows
+    else
+      ColsRows := False; // Assume AWidth/AHeight are pixels
+
+    if ColsRows then
+    begin
+      BufferSize.X := AWidth;
+      BufferSize.Y := AHeight;
+    end
+    else // AWidth, AHeight are pixels, estimate columns/rows
+    begin
+      // This estimation is very rough. Font metrics would be better but complex.
+      // Using AFontSize is a basic approach.
+      // For X: common ratio is height/2 for monospaced fonts. If dwFontSize.X was set, use it.
+      var CharWidthEst, CharHeightEst: Integer;
+      CharHeightEst := AFontSize; // Y is directly AFontSize
+      if FontInfo.dwFontSize.X <> 0 then // If font system provided a width
+         CharWidthEst := FontInfo.dwFontSize.X
+      else // Estimate width
+         CharWidthEst := Max(1, AFontSize div 2); // Ensure at least 1
+
+      if CharWidthEst <= 0 then CharWidthEst := 8;   // Fallback if estimation is bad
+      if CharHeightEst <= 0 then CharHeightEst := 16; // Fallback
+
+      BufferSize.X := Min(AWidth div CharWidthEst, MaxSize.X);
+      BufferSize.Y := Min(AHeight div CharHeightEst, MaxSize.Y);
+    end;
+
+    // Ensure buffer size is at least 1x1
+    if BufferSize.X < 1 then BufferSize.X := 80; // Default width
+    if BufferSize.Y < 1 then BufferSize.Y := 25; // Default height
+
+    // The console window size cannot be larger than the screen buffer size.
+    // And buffer cannot be smaller than window. This is tricky.
+    // Strategy:
+    // 1. Shrink window to minimum.
+    // 2. Set desired buffer size.
+    // 3. Set desired window size (must be <= buffer size).
+
+    TempWindowSize.Left := 0;
+    TempWindowSize.Top := 0;
+    TempWindowSize.Right := 0;  // Smallest possible window (1x1 column/row)
+    TempWindowSize.Bottom := 0;
+    SetConsoleWindowInfo(hConsole, True, @TempWindowSize); // Shrink window
+
+    // Set the screen buffer size
+    if not SetConsoleScreenBufferSize(hConsole, BufferSize) then
+    begin
+      // If setting buffer failed, try to get current buffer and adapt or log
+      // GetConsoleScreenBufferInfo(hConsole, ScreenBufferInfo); BufferSize := ScreenBufferInfo.dwSize;
+      // Consider logging: 'SetConsoleScreenBufferSize failed. Error: ' + SysErrorMessage(GetLastError)
+    end else begin
+      // Buffer set, now ensure window is not larger than this new buffer
+    end;
+
+    // Define desired window size in terms of columns and rows
+    WindowSize.Left := 0;
+    WindowSize.Top := 0;
+    WindowSize.Right := BufferSize.X - 1;
+    WindowSize.Bottom := BufferSize.Y - 1;
+
+    // Ensure window is not larger than current buffer (might have changed if SetConsoleScreenBufferSize failed)
+    var CurrentBufferInfo: TConsoleScreenBufferInfo;
+    if GetConsoleScreenBufferInfo(hConsole, CurrentBufferInfo) then
+    begin
+      if WindowSize.Right >= CurrentBufferInfo.dwSize.X then
+        WindowSize.Right := CurrentBufferInfo.dwSize.X - 1;
+      if WindowSize.Bottom >= CurrentBufferInfo.dwSize.Y then
+        WindowSize.Bottom := CurrentBufferInfo.dwSize.Y - 1;
+    end;
+    // Ensure rect is valid
+    if WindowSize.Right < WindowSize.Left then WindowSize.Right := WindowSize.Left;
+    if WindowSize.Bottom < WindowSize.Top then WindowSize.Bottom := WindowSize.Top;
+
+
+    if not SetConsoleWindowInfo(hConsole, True, @WindowSize) then
+    begin
+      // Consider logging: 'SetConsoleWindowInfo failed. Error: ' + SysErrorMessage(GetLastError)
+    end;
+
+    // 9. Position the window and set style
+    hWnd := GetConsoleWindow;
+    if hWnd <> 0 then
+    begin
+      if (X >= 0) and (Y >= 0) then // If X, Y are specified for top-left corner
+      begin
+        if ColsRows then // AWidth/AHeight were cols/rows, so window size is already set by WindowSize
+        begin
+          // Get current window pixel dimensions to preserve them if not changing size
+          GetWindowRect(hWnd, InitialWindowRect);
+          ActualWidth := InitialWindowRect.Right - InitialWindowRect.Left;
+          ActualHeight := InitialWindowRect.Bottom - InitialWindowRect.Top;
+          SetWindowPos(hWnd, 0, X, Y, ActualWidth, ActualHeight, SWP_NOZORDER); // Use X,Y as screen coords
+        end
+        else // AWidth/AHeight were pixels, use them for window size
+        begin
+          SetWindowPos(hWnd, 0, X, Y, AWidth, AHeight, SWP_NOZORDER);
+        end;
+      end;
+
+      // Disable window resize/maximize (as per original code)
+      Style := GetWindowLong(hWnd, GWL_STYLE);
+      Style := Style and not (WS_SIZEBOX or WS_MAXIMIZEBOX);
+      SetWindowLong(hWnd, GWL_STYLE, Style);
+      // Force frame change to apply style
+      SetWindowPos(hWnd, 0, 0, 0, 0, 0,
+        SWP_NOMOVE or SWP_NOSIZE or SWP_NOZORDER or SWP_FRAMECHANGED);
+    end;
+
+    // 10. Flush to ensure settings are applied
+    FlushFileBuffers(hConsole);
+
+    FIsInit := True;
+
+    if not ATitle.IsEmpty then
+      SetTitle(ATitle);
+
+    Result := True;
+
+  except
+    on E: Exception do
+    begin
+      // Consider logging: 'TConsole.Init: Exception - ' + E.Message
+      // If AllocConsole succeeded, we should free it on failure here
+      if GetStdHandle(STD_OUTPUT_HANDLE) <> INVALID_HANDLE_VALUE then // A basic check if we got far enough
+      begin
+         // Attempt to clean up standard I/O if they were assigned
+         // CloseFile(Output); CloseFile(Input); CloseFile(ErrOutput); // Be cautious with this
+      end;
+      FreeConsole; // Free the console we allocated
+      Result := False;
+      // Optionally re-raise to notify caller of the problem:
+      // raise;
+    end;
+  end;
 end;
+*)
+
+// Callback function for font enumeration - stops on first match
+function EnumFontFamExProc(var LogFont: TLogFont; var TextMetric: TTextMetric;
+  FontType: DWORD; Data: LPARAM): Integer; stdcall;
+begin
+  // Set the boolean pointer to True (font found)
+  PBoolean(Data)^ := True;
+
+  // Return 0 to stop enumeration since we found what we wanted
+  Result := 0;
+end;
+
+// Helper function to check if a font is available
+function IsFontAvailable(const AFontName: string): Boolean;
+var
+  LDC: HDC;
+  LLogFont: TLogFont;
+  LFontExists: Boolean;
+begin
+  Result := False;
+
+  LDC := CreateDC('DISPLAY', nil, nil, nil);
+  if LDC <> 0 then
+  try
+    // Setup logfont for the font we want to check
+    FillChar(LLogFont, SizeOf(LLogFont), 0);
+    StrPCopy(LLogFont.lfFaceName, AFontName);
+    LLogFont.lfCharSet := DEFAULT_CHARSET;
+
+    // Initially not found
+    LFontExists := False;
+
+    // Call EnumFontFamiliesEx to check if the font exists
+    EnumFontFamiliesEx(LDC, LLogFont, @EnumFontFamExProc, LPARAM(@LFontExists), 0);
+
+    // Return result
+    Result := LFontExists;
+  finally
+    DeleteDC(LDC);
+  end;
+end;
+
+(*
+class function TConsole.Init(const ATitle: string; const X, Y, AWidth, AHeight, AFontSize: Integer; const AFontName: string): Boolean;
+var
+  hConsole, hInput, hWnd: THandle;
+  BufferSize, MaxSize: TCoord;
+  WindowSize, TempWindowSize: TSmallRect;
+  Style: NativeInt;
+  Mode: DWORD;
+  FontInfo: TConsoleFontInfoEx;
+  ColsRows: Boolean;
+  FontSetSuccess: Boolean;
+  ConsoleCPSet, OutputCPSet: Boolean;
+  InitialWindowRect: TRect;
+  ActualWidth, ActualHeight: Integer;
+begin
+  Result := False;
+
+  // 1. Handle existing console for this process
+if GetConsoleWindow <> 0 then
+begin
+  MessageBox(0,
+    'Fatal Error: A console window is already attached to this process.' + sLineBreak +
+    'TConsole requires full control of its own console window.' + sLineBreak +
+    'Please ensure the application is not launched in console mode.',
+    'TConsole Initialization Failure',
+    MB_ICONERROR);
+  Halt(1);
+end;
+
+  // 2. Create new private console
+  if not AllocConsole then
+  begin
+    // Consider logging: 'TConsole.Init: AllocConsole failed. Error: ' + SysErrorMessage(GetLastError)
+    Exit; // Cannot proceed without a console
+  end;
+
+  try
+    // 3. Get handles
+    hConsole := GetStdHandle(STD_OUTPUT_HANDLE);
+    hInput := GetStdHandle(STD_INPUT_HANDLE);
+    if (hConsole = INVALID_HANDLE_VALUE) or (hInput = INVALID_HANDLE_VALUE) then
+    begin
+      // Consider logging: 'TConsole.Init: GetStdHandle failed. Error: ' + SysErrorMessage(GetLastError)
+      Exit; // Critical failure
+    end;
+
+    SetConsoleCP(CP_UTF8);
+    SetConsoleOutputCP(CP_UTF8);
+
+    // 4. Set Font (ONLY if a font name is specified)
+    if Trim(AFontName) <> '' then
+    begin
+      // Only try to set a font if a name was specified
+      if IsFontAvailable(AFontName) then
+      begin
+        ZeroMemory(@FontInfo, SizeOf(FontInfo));
+        FontInfo.cbSize := SizeOf(FontInfo);
+        FontInfo.dwFontSize.X := 0; // Auto-width based on height for TrueType fonts
+        FontInfo.dwFontSize.Y := AFontSize;
+        FontInfo.FontFamily := FF_MODERN; // Fixed-pitch is generally desired for consoles
+        FontInfo.FontWeight := FW_NORMAL;
+
+        StringToWideChar(AFontName, FontInfo.FaceName, LF_FACESIZE);
+
+        FontSetSuccess := SetCurrentConsoleFontEx(hConsole, False, FontInfo);
+        if not FontSetSuccess then
+        begin
+          // Consider logging: 'TConsole.Init: Failed to set font ' + AFontName +
+          // ' even though it exists. Error: ' + SysErrorMessage(GetLastError)
+          // If font setting fails, we just proceed with default font
+        end;
+      end;
+      // If font not available, do nothing and let console use default font
+    end;
+    // If no font specified, do nothing and let console use default font
+
+    // 5. Set Console Code Pages to UTF-8
+    ConsoleCPSet := SetConsoleCP(CP_UTF8); // For input
+    if not ConsoleCPSet then
+    begin
+      // Consider logging: 'TConsole.Init: SetConsoleCP(CP_UTF8) failed. Error: ' + SysErrorMessage(GetLastError)
+    end;
+
+    OutputCPSet := SetConsoleOutputCP(CP_UTF8); // For output
+    if not OutputCPSet then
+    begin
+      // Consider logging: 'TConsole.Init: SetConsoleOutputCP(CP_UTF8) failed. Error: ' + SysErrorMessage(GetLastError)
+      // If setting output CP to UTF-8 fails, character display will be incorrect. This is a major issue.
+      // You might want to Exit or raise an exception here if UTF-8 is mandatory.
+    end;
+
+    // 6. Hook up standard I/O AFTER setting code pages
+    // This ensures Delphi's RTL uses the correct encoding for WriteLn, ReadLn, etc.
+    AssignFile(Output, 'CONOUT$'); {$WARNINGS OFF} // Suppress warning about open file
+    Rewrite(Output); {$WARNINGS ON}
+    AssignFile(Input, 'CONIN$'); {$WARNINGS OFF}
+    Reset(Input); {$WARNINGS ON}
+    AssignFile(ErrOutput, 'CONOUT$'); {$WARNINGS OFF}
+    Rewrite(ErrOutput); {$WARNINGS ON}
+
+    // 7. Apply Console Mode Settings
+    if GetConsoleMode(hConsole, Mode) then
+    begin
+      Mode := Mode or ENABLE_PROCESSED_OUTPUT or ENABLE_WRAP_AT_EOL_OUTPUT;
+      // Attempt to enable virtual terminal processing for ANSI escape codes (Win10+)
+      Mode := Mode or ENABLE_VIRTUAL_TERMINAL_PROCESSING; // $0004
+      if not SetConsoleMode(hConsole, Mode) then
+      begin
+        // If setting with VT processing failed, try without it (older Windows)
+        if GetConsoleMode(hConsole, Mode) then // Get mode again
+        begin
+           Mode := (Mode and not ENABLE_VIRTUAL_TERMINAL_PROCESSING) // Remove VT flag
+                    or ENABLE_PROCESSED_OUTPUT or ENABLE_WRAP_AT_EOL_OUTPUT; // Ensure basics
+           SetConsoleMode(hConsole, Mode); // Try setting basic modes
+           // Log failure if desired, but proceed
+        end;
+      end;
+    end
+    else
+    begin
+      // Consider logging: 'TConsole.Init: GetConsoleMode failed. Error: ' + SysErrorMessage(GetLastError)
+    end;
+
+    // 8. Set console buffer size and window size
+    // Determine if AWidth/AHeight are columns/rows or pixels
+    // Heuristic: small values are likely columns/rows.
+    // Max console dimensions: MaxSize.X columns, MaxSize.Y rows.
+    MaxSize := GetLargestConsoleWindowSize(hConsole);
+    if (AWidth > 0) and (AWidth <= MaxSize.X) and (AHeight > 0) and (AHeight <= MaxSize.Y) and (AWidth <= 300) and (AHeight <= 200) then // Adjusted heuristic
+      ColsRows := True // Assume AWidth/AHeight are columns/rows
+    else
+      ColsRows := False; // Assume AWidth/AHeight are pixels
+
+    if ColsRows then
+    begin
+      BufferSize.X := AWidth;
+      BufferSize.Y := AHeight;
+    end
+    else // AWidth, AHeight are pixels, estimate columns/rows
+    begin
+      // This estimation is very rough. Font metrics would be better but complex.
+      // Using AFontSize is a basic approach.
+      // For X: common ratio is height/2 for monospaced fonts. If dwFontSize.X was set, use it.
+      var CharWidthEst, CharHeightEst: Integer;
+      CharHeightEst := AFontSize; // Y is directly AFontSize
+      if (Trim(AFontName) <> '') and FontSetSuccess and (FontInfo.dwFontSize.X <> 0) then
+         CharWidthEst := FontInfo.dwFontSize.X
+      else // Estimate width
+         CharWidthEst := Max(1, AFontSize div 2); // Ensure at least 1
+
+      if CharWidthEst <= 0 then CharWidthEst := 8;   // Fallback if estimation is bad
+      if CharHeightEst <= 0 then CharHeightEst := 16; // Fallback
+
+      BufferSize.X := Min(AWidth div CharWidthEst, MaxSize.X);
+      BufferSize.Y := Min(AHeight div CharHeightEst, MaxSize.Y);
+    end;
+
+    // Ensure buffer size is at least 1x1
+    if BufferSize.X < 1 then BufferSize.X := 80; // Default width
+    if BufferSize.Y < 1 then BufferSize.Y := 25; // Default height
+
+    // The console window size cannot be larger than the screen buffer size.
+    // And buffer cannot be smaller than window. This is tricky.
+    // Strategy:
+    // 1. Shrink window to minimum.
+    // 2. Set desired buffer size.
+    // 3. Set desired window size (must be <= buffer size).
+
+    TempWindowSize.Left := 0;
+    TempWindowSize.Top := 0;
+    TempWindowSize.Right := 0;  // Smallest possible window (1x1 column/row)
+    TempWindowSize.Bottom := 0;
+    SetConsoleWindowInfo(hConsole, True, @TempWindowSize); // Shrink window
+
+    // Set the screen buffer size
+    if not SetConsoleScreenBufferSize(hConsole, BufferSize) then
+    begin
+      // If setting buffer failed, try to get current buffer and adapt or log
+      // GetConsoleScreenBufferInfo(hConsole, ScreenBufferInfo); BufferSize := ScreenBufferInfo.dwSize;
+      // Consider logging: 'SetConsoleScreenBufferSize failed. Error: ' + SysErrorMessage(GetLastError)
+    end else begin
+      // Buffer set, now ensure window is not larger than this new buffer
+    end;
+
+    // Define desired window size in terms of columns and rows
+    WindowSize.Left := 0;
+    WindowSize.Top := 0;
+    WindowSize.Right := BufferSize.X - 1;
+    WindowSize.Bottom := BufferSize.Y - 1;
+
+    // Ensure window is not larger than current buffer (might have changed if SetConsoleScreenBufferSize failed)
+    var CurrentBufferInfo: TConsoleScreenBufferInfo;
+    if GetConsoleScreenBufferInfo(hConsole, CurrentBufferInfo) then
+    begin
+      if WindowSize.Right >= CurrentBufferInfo.dwSize.X then
+        WindowSize.Right := CurrentBufferInfo.dwSize.X - 1;
+      if WindowSize.Bottom >= CurrentBufferInfo.dwSize.Y then
+        WindowSize.Bottom := CurrentBufferInfo.dwSize.Y - 1;
+    end;
+    // Ensure rect is valid
+    if WindowSize.Right < WindowSize.Left then WindowSize.Right := WindowSize.Left;
+    if WindowSize.Bottom < WindowSize.Top then WindowSize.Bottom := WindowSize.Top;
+
+
+    if not SetConsoleWindowInfo(hConsole, True, @WindowSize) then
+    begin
+      // Consider logging: 'SetConsoleWindowInfo failed. Error: ' + SysErrorMessage(GetLastError)
+    end;
+
+    // 9. Position the window and set style
+    hWnd := GetConsoleWindow;
+    if hWnd <> 0 then
+    begin
+      if (X >= 0) and (Y >= 0) then // If X, Y are specified for top-left corner
+      begin
+        if ColsRows then // AWidth/AHeight were cols/rows, so window size is already set by WindowSize
+        begin
+          // Get current window pixel dimensions to preserve them if not changing size
+          GetWindowRect(hWnd, InitialWindowRect);
+          ActualWidth := InitialWindowRect.Right - InitialWindowRect.Left;
+          ActualHeight := InitialWindowRect.Bottom - InitialWindowRect.Top;
+          SetWindowPos(hWnd, 0, X, Y, ActualWidth, ActualHeight, SWP_NOZORDER); // Use X,Y as screen coords
+        end
+        else // AWidth/AHeight were pixels, use them for window size
+        begin
+          SetWindowPos(hWnd, 0, X, Y, AWidth, AHeight, SWP_NOZORDER);
+        end;
+      end;
+
+      // Disable window resize/maximize (as per original code)
+      Style := GetWindowLong(hWnd, GWL_STYLE);
+      Style := Style and not (WS_SIZEBOX or WS_MAXIMIZEBOX);
+      SetWindowLong(hWnd, GWL_STYLE, Style);
+      // Force frame change to apply style
+      SetWindowPos(hWnd, 0, 0, 0, 0, 0,
+        SWP_NOMOVE or SWP_NOSIZE or SWP_NOZORDER or SWP_FRAMECHANGED);
+    end;
+
+    // 10. Flush to ensure settings are applied
+    FlushFileBuffers(hConsole);
+
+    FIsInit := True;
+
+    if not ATitle.IsEmpty then
+      SetTitle(ATitle);
+
+    Result := True;
+
+  except
+    on E: Exception do
+    begin
+      // Consider logging: 'TConsole.Init: Exception - ' + E.Message
+      // If AllocConsole succeeded, we should free it on failure here
+      if GetStdHandle(STD_OUTPUT_HANDLE) <> INVALID_HANDLE_VALUE then // A basic check if we got far enough
+      begin
+         // Attempt to clean up standard I/O if they were assigned
+         // CloseFile(Output); CloseFile(Input); CloseFile(ErrOutput); // Be cautious with this
+      end;
+      FreeConsole; // Free the console we allocated
+      Result := False;
+      // Optionally re-raise to notify caller of the problem:
+      // raise;
+    end;
+  end;
+end;
+*)
+
+class function TConsole.Init(const ATitle: string; const X, Y, AWidth, AHeight, AFontSize: Integer; const AFontName: string): Boolean;
+var
+  hConsole, hInput, hWnd: THandle;
+  BufferSize, MaxSize: TCoord;
+  WindowSize, TempWindowSize: TSmallRect;
+  Style: NativeInt;
+  Mode: DWORD;
+  FontInfo: TConsoleFontInfoEx;
+  ColsRows: Boolean;
+  FontSetSuccess: Boolean;
+  ConsoleCPSet, OutputCPSet: Boolean;
+  WindowRect: TRect;
+  ActualWidth, ActualHeight: Integer;
+  DesktopRect: TRect;
+  CenterX, CenterY: Integer;
+  CharWidthEst, CharHeightEst: Integer;
+  CurrentBufferInfo: TConsoleScreenBufferInfo;
+begin
+  Result := False;
+
+  // 1. Handle existing console for this process
+  if GetConsoleWindow <> 0 then
+  begin
+    MessageBox(0,
+      'Fatal Error: A console window is already attached to this process.' + sLineBreak +
+      'TConsole requires full control of its own console window.' + sLineBreak +
+      'Please ensure the application is not launched in console mode.',
+      'TConsole Initialization Failure',
+      MB_ICONERROR);
+    Halt(1);
+  end;
+
+  // 2. Create new private console
+  if not AllocConsole then
+  begin
+    // Consider logging: 'TConsole.Init: AllocConsole failed. Error: ' + SysErrorMessage(GetLastError)
+    Exit; // Cannot proceed without a console
+  end;
+
+  try
+    // 3. Get handles
+    hConsole := GetStdHandle(STD_OUTPUT_HANDLE);
+    hInput := GetStdHandle(STD_INPUT_HANDLE);
+    if (hConsole = INVALID_HANDLE_VALUE) or (hInput = INVALID_HANDLE_VALUE) then
+    begin
+      // Consider logging: 'TConsole.Init: GetStdHandle failed. Error: ' + SysErrorMessage(GetLastError)
+      Exit; // Critical failure
+    end;
+
+    SetConsoleCP(CP_UTF8);
+    SetConsoleOutputCP(CP_UTF8);
+
+    // 4. Set Font (ONLY if a font name is specified)
+    if Trim(AFontName) <> '' then
+    begin
+      // Only try to set a font if a name was specified
+      if IsFontAvailable(AFontName) then
+      begin
+        ZeroMemory(@FontInfo, SizeOf(FontInfo));
+        FontInfo.cbSize := SizeOf(FontInfo);
+        FontInfo.dwFontSize.X := 0; // Auto-width based on height for TrueType fonts
+        FontInfo.dwFontSize.Y := AFontSize;
+        FontInfo.FontFamily := FF_MODERN; // Fixed-pitch is generally desired for consoles
+        FontInfo.FontWeight := FW_NORMAL;
+
+        StringToWideChar(AFontName, FontInfo.FaceName, LF_FACESIZE);
+
+        FontSetSuccess := SetCurrentConsoleFontEx(hConsole, False, FontInfo);
+        if not FontSetSuccess then
+        begin
+          // Consider logging: 'TConsole.Init: Failed to set font ' + AFontName +
+          // ' even though it exists. Error: ' + SysErrorMessage(GetLastError)
+          // If font setting fails, we just proceed with default font
+        end;
+      end;
+      // If font not available, do nothing and let console use default font
+    end;
+    // If no font specified, do nothing and let console use default font
+
+    // 5. Set Console Code Pages to UTF-8
+    ConsoleCPSet := SetConsoleCP(CP_UTF8); // For input
+    if not ConsoleCPSet then
+    begin
+      // Consider logging: 'TConsole.Init: SetConsoleCP(CP_UTF8) failed. Error: ' + SysErrorMessage(GetLastError)
+    end;
+
+    OutputCPSet := SetConsoleOutputCP(CP_UTF8); // For output
+    if not OutputCPSet then
+    begin
+      // Consider logging: 'TConsole.Init: SetConsoleOutputCP(CP_UTF8) failed. Error: ' + SysErrorMessage(GetLastError)
+      // If setting output CP to UTF-8 fails, character display will be incorrect. This is a major issue.
+      // You might want to Exit or raise an exception here if UTF-8 is mandatory.
+    end;
+
+    // 6. Hook up standard I/O AFTER setting code pages
+    // This ensures Delphi's RTL uses the correct encoding for WriteLn, ReadLn, etc.
+    AssignFile(Output, 'CONOUT$'); {$WARNINGS OFF} // Suppress warning about open file
+    Rewrite(Output); {$WARNINGS ON}
+    AssignFile(Input, 'CONIN$'); {$WARNINGS OFF}
+    Reset(Input); {$WARNINGS ON}
+    AssignFile(ErrOutput, 'CONOUT$'); {$WARNINGS OFF}
+    Rewrite(ErrOutput); {$WARNINGS ON}
+
+    // 7. Apply Console Mode Settings
+    if GetConsoleMode(hConsole, Mode) then
+    begin
+      Mode := Mode or ENABLE_PROCESSED_OUTPUT or ENABLE_WRAP_AT_EOL_OUTPUT;
+      // Attempt to enable virtual terminal processing for ANSI escape codes (Win10+)
+      Mode := Mode or ENABLE_VIRTUAL_TERMINAL_PROCESSING; // $0004
+      if not SetConsoleMode(hConsole, Mode) then
+      begin
+        // If setting with VT processing failed, try without it (older Windows)
+        if GetConsoleMode(hConsole, Mode) then // Get mode again
+        begin
+           Mode := (Mode and not ENABLE_VIRTUAL_TERMINAL_PROCESSING) // Remove VT flag
+                    or ENABLE_PROCESSED_OUTPUT or ENABLE_WRAP_AT_EOL_OUTPUT; // Ensure basics
+           SetConsoleMode(hConsole, Mode); // Try setting basic modes
+           // Log failure if desired, but proceed
+        end;
+      end;
+    end
+    else
+    begin
+      // Consider logging: 'TConsole.Init: GetConsoleMode failed. Error: ' + SysErrorMessage(GetLastError)
+    end;
+
+    // 8. Set console buffer size and window size
+    // Determine if AWidth/AHeight are columns/rows or pixels
+    // Heuristic: small values are likely columns/rows.
+    // Max console dimensions: MaxSize.X columns, MaxSize.Y rows.
+    MaxSize := GetLargestConsoleWindowSize(hConsole);
+    if (AWidth > 0) and (AWidth <= MaxSize.X) and (AHeight > 0) and (AHeight <= MaxSize.Y) and (AWidth <= 300) and (AHeight <= 200) then // Adjusted heuristic
+      ColsRows := True // Assume AWidth/AHeight are columns/rows
+    else
+      ColsRows := False; // Assume AWidth/AHeight are pixels
+
+    if ColsRows then
+    begin
+      BufferSize.X := AWidth;
+      BufferSize.Y := AHeight;
+    end
+    else // AWidth, AHeight are pixels, estimate columns/rows
+    begin
+      // This estimation is very rough. Font metrics would be better but complex.
+      // Using AFontSize is a basic approach.
+      // For X: common ratio is height/2 for monospaced fonts. If dwFontSize.X was set, use it.
+      CharHeightEst := AFontSize; // Y is directly AFontSize
+      if (Trim(AFontName) <> '') and FontSetSuccess and (FontInfo.dwFontSize.X <> 0) then
+         CharWidthEst := FontInfo.dwFontSize.X
+      else // Estimate width
+         CharWidthEst := Max(1, AFontSize div 2); // Ensure at least 1
+
+      if CharWidthEst <= 0 then CharWidthEst := 8;   // Fallback if estimation is bad
+      if CharHeightEst <= 0 then CharHeightEst := 16; // Fallback
+
+      BufferSize.X := Min(AWidth div CharWidthEst, MaxSize.X);
+      BufferSize.Y := Min(AHeight div CharHeightEst, MaxSize.Y);
+    end;
+
+    // Ensure buffer size is at least 1x1
+    if BufferSize.X < 1 then BufferSize.X := 80; // Default width
+    if BufferSize.Y < 1 then BufferSize.Y := 25; // Default height
+
+    // The console window size cannot be larger than the screen buffer size.
+    // And buffer cannot be smaller than window. This is tricky.
+    // Strategy:
+    // 1. Shrink window to minimum.
+    // 2. Set desired buffer size.
+    // 3. Set desired window size (must be <= buffer size).
+
+    TempWindowSize.Left := 0;
+    TempWindowSize.Top := 0;
+    TempWindowSize.Right := 0;  // Smallest possible window (1x1 column/row)
+    TempWindowSize.Bottom := 0;
+    SetConsoleWindowInfo(hConsole, True, @TempWindowSize); // Shrink window
+
+    // Set the screen buffer size
+    if not SetConsoleScreenBufferSize(hConsole, BufferSize) then
+    begin
+      // If setting buffer failed, try to get current buffer and adapt or log
+      // GetConsoleScreenBufferInfo(hConsole, ScreenBufferInfo); BufferSize := ScreenBufferInfo.dwSize;
+      // Consider logging: 'SetConsoleScreenBufferSize failed. Error: ' + SysErrorMessage(GetLastError)
+    end else begin
+      // Buffer set, now ensure window is not larger than this new buffer
+    end;
+
+    // Define desired window size in terms of columns and rows
+    WindowSize.Left := 0;
+    WindowSize.Top := 0;
+    WindowSize.Right := BufferSize.X - 1;
+    WindowSize.Bottom := BufferSize.Y - 1;
+
+    // Ensure window is not larger than current buffer (might have changed if SetConsoleScreenBufferSize failed)
+    if GetConsoleScreenBufferInfo(hConsole, CurrentBufferInfo) then
+    begin
+      if WindowSize.Right >= CurrentBufferInfo.dwSize.X then
+        WindowSize.Right := CurrentBufferInfo.dwSize.X - 1;
+      if WindowSize.Bottom >= CurrentBufferInfo.dwSize.Y then
+        WindowSize.Bottom := CurrentBufferInfo.dwSize.Y - 1;
+    end;
+    // Ensure rect is valid
+    if WindowSize.Right < WindowSize.Left then WindowSize.Right := WindowSize.Left;
+    if WindowSize.Bottom < WindowSize.Top then WindowSize.Bottom := WindowSize.Top;
+
+    if not SetConsoleWindowInfo(hConsole, True, @WindowSize) then
+    begin
+      // Consider logging: 'SetConsoleWindowInfo failed. Error: ' + SysErrorMessage(GetLastError)
+    end;
+
+    // 9. Position the window and set style
+    hWnd := GetConsoleWindow;
+    if hWnd <> 0 then
+    begin
+      // Apply window style changes
+      Style := GetWindowLong(hWnd, GWL_STYLE);
+      Style := Style and not (WS_SIZEBOX or WS_MAXIMIZEBOX);
+      SetWindowLong(hWnd, GWL_STYLE, Style);
+
+      // Force frame change to apply style
+      SetWindowPos(hWnd, 0, 0, 0, 0, 0,
+        SWP_NOMOVE or SWP_NOSIZE or SWP_NOZORDER or SWP_FRAMECHANGED);
+
+      // If using pixel dimensions, apply them now
+      if not ColsRows and (AWidth > 0) and (AHeight > 0) then
+      begin
+        SetWindowPos(hWnd, 0, 0, 0, AWidth, AHeight, SWP_NOMOVE or SWP_NOZORDER);
+      end;
+
+      // Allow the window to fully update before proceeding
+      Sleep(50);
+
+      // Now position the window, using its actual size
+      GetWindowRect(hWnd, WindowRect);
+      ActualWidth := WindowRect.Right - WindowRect.Left;
+      ActualHeight := WindowRect.Bottom - WindowRect.Top;
+
+      // Calculate position for centering if needed
+      if (X < 0) or (Y < 0) then
+      begin
+        SystemParametersInfo(SPI_GETWORKAREA, 0, @DesktopRect, 0);
+
+        if X < 0 then
+          CenterX := ((DesktopRect.Right - DesktopRect.Left) - ActualWidth) div 2 + DesktopRect.Left
+        else
+          CenterX := X;
+
+        if Y < 0 then
+          CenterY := ((DesktopRect.Bottom - DesktopRect.Top) - ActualHeight) div 2 + DesktopRect.Top
+        else
+          CenterY := Y;
+
+        // Move the window to the desired position (preserve existing size)
+        SetWindowPos(hWnd, 0, CenterX, CenterY, 0, 0, SWP_NOSIZE or SWP_NOZORDER);
+      end
+      else if (X >= 0) and (Y >= 0) then
+      begin
+        // Move to specified position (preserve existing size)
+        SetWindowPos(hWnd, 0, X, Y, 0, 0, SWP_NOSIZE or SWP_NOZORDER);
+      end;
+    end;
+
+    // 10. Flush to ensure settings are applied
+    FlushFileBuffers(hConsole);
+
+    FIsInit := True;
+
+    if not ATitle.IsEmpty then
+      SetTitle(ATitle);
+
+    Result := True;
+
+  except
+    on E: Exception do
+    begin
+      // Consider logging: 'TConsole.Init: Exception - ' + E.Message
+      // If AllocConsole succeeded, we should free it on failure here
+      if GetStdHandle(STD_OUTPUT_HANDLE) <> INVALID_HANDLE_VALUE then // A basic check if we got far enough
+      begin
+         // Attempt to clean up standard I/O if they were assigned
+         // CloseFile(Output); CloseFile(Input); CloseFile(ErrOutput); // Be cautious with this
+      end;
+      FreeConsole; // Free the console we allocated
+      Result := False;
+      // Optionally re-raise to notify caller of the problem:
+      // raise;
+    end;
+  end;
+end;
+
+class function  TConsole.IsInit(): Boolean;
+begin
+  Result := FIsInit;
+end;
+
+// The TConsole.Shutdown method remains the same as you provided.
+class procedure TConsole.Shutdown;
+begin
+  if not FIsInit then Exit;
+
+  try
+    // Close files first to ensure proper cleanup
+    try CloseFile(Input); except end;
+    try CloseFile(Output); except end;
+    try CloseFile(ErrOutput); except end;
+  finally
+    // Free the console as the very last step
+    // Only free if this class/instance "owns" the console.
+    // If Init failed to create one, or if one was pre-existing and not managed by this class,
+    // this could be problematic. Assuming Init either creates or takes ownership.
+    FreeConsole;
+  end;
+
+  FIsInit := False;
+end;
+
 
 class function  TConsole.GetVersion(): string;
 begin
-  Result := '0.2.0';
+  Result := '0.3.0';
 end;
 
 class procedure TConsole.PrintLogo(const AColor: string);
@@ -1112,6 +2079,9 @@ end;
 
 class procedure TConsole.Print(const AMsg: string; const AResetFormat: Boolean);
 var
+  hConsole: THandle;
+  WideS: WideString;
+  Written: DWORD;
   LResetFormat: string;
 begin
   if not HasOutput() then Exit;
@@ -1119,11 +2089,16 @@ begin
     LREsetFormat := CSIResetFormat
   else
     LResetFormat := '';
-  Write(AMsg+LResetFormat);
+  hConsole := GetStdHandle(STD_OUTPUT_HANDLE);
+  WideS := AMsg+LResetFormat;
+  WriteConsoleW(hConsole, PWideChar(WideS), Length(WideS), Written, nil);
 end;
 
 class procedure TConsole.PrintLn(const AMsg: string; const AResetFormat: Boolean);
 var
+  hConsole: THandle;
+  WideS: WideString;
+  Written: DWORD;
   LResetFormat: string;
 begin
   if not HasOutput() then Exit;
@@ -1131,11 +2106,16 @@ begin
     LREsetFormat := CSIResetFormat
   else
     LResetFormat := '';
-  WriteLn(AMsg+LResetFormat);
+  hConsole := GetStdHandle(STD_OUTPUT_HANDLE);
+  WideS := AMsg + sLineBreak + LResetFormat;
+  WriteConsoleW(hConsole, PWideChar(WideS), Length(WideS), Written, nil);
 end;
 
 class procedure TConsole.Print(const AMsg: string; const AArgs: array of const; const AResetFormat: Boolean);
 var
+  hConsole: THandle;
+  WideS: WideString;
+  Written: DWORD;
   LResetFormat: string;
 begin
   if not HasOutput() then Exit;
@@ -1143,11 +2123,16 @@ begin
     LREsetFormat := CSIResetFormat
   else
     LResetFormat := '';
-  Write(Format(AMsg, AArgs)+LResetFormat);
+  hConsole := GetStdHandle(STD_OUTPUT_HANDLE);
+  WideS := Format(AMsg, AArgs)+LResetFormat;
+  WriteConsoleW(hConsole, PWideChar(WideS), Length(WideS), Written, nil);
 end;
 
 class procedure TConsole.PrintLn(const AMsg: string; const AArgs: array of const; const AResetFormat: Boolean);
 var
+  hConsole: THandle;
+  WideS: WideString;
+  Written: DWORD;
   LResetFormat: string;
 begin
   if not HasOutput() then Exit;
@@ -1155,11 +2140,16 @@ begin
     LREsetFormat := CSIResetFormat
   else
     LResetFormat := '';
-  WriteLn(Format(AMsg, AArgs)+LResetFormat);
+  hConsole := GetStdHandle(STD_OUTPUT_HANDLE);
+  WideS := Format(AMsg, AArgs) + sLineBreak + LResetFormat;
+  WriteConsoleW(hConsole, PWideChar(WideS), Length(WideS), Written, nil);
 end;
 
 class procedure TConsole.Print(const AResetFormat: Boolean);
 var
+  hConsole: THandle;
+  WideS: WideString;
+  Written: DWORD;
   LResetFormat: string;
 begin
   if not HasOutput() then Exit;
@@ -1167,11 +2157,16 @@ begin
     LREsetFormat := CSIResetFormat
   else
     LResetFormat := '';
-  Write(LResetFormat);
+  hConsole := GetStdHandle(STD_OUTPUT_HANDLE);
+  WideS := LResetFormat;
+  WriteConsoleW(hConsole, PWideChar(WideS), Length(WideS), Written, nil);
 end;
 
 class procedure TConsole.PrintLn(const AResetFormat: Boolean);
 var
+  hConsole: THandle;
+  WideS: WideString;
+  Written: DWORD;
   LResetFormat: string;
 begin
   if not HasOutput() then Exit;
@@ -1179,7 +2174,9 @@ begin
     LREsetFormat := CSIResetFormat
   else
     LResetFormat := '';
-  WriteLn(LResetFormat);
+  hConsole := GetStdHandle(STD_OUTPUT_HANDLE);
+  WideS :=  sLineBreak + LResetFormat;
+  WriteConsoleW(hConsole, PWideChar(WideS), Length(WideS), Written, nil);
 end;
 
 class procedure TConsole.PipeWrite(const AMsg: string);
@@ -1341,7 +2338,7 @@ begin
     Output := Output + Ch;
     Inc(i);
   end;
-  Write(Output);
+  Print(Output);
 end;
 
 class procedure TConsole.PipeWriteLn(const AMsg: string);
@@ -1795,14 +2792,16 @@ begin
     if not LDoPause then Exit;
   end;
 
-  WriteLn;
+  ShowCursor();
+
+  PrintLn();
   if AMsg = '' then
     Print('%sPress any key to continue... ', [aColor])
   else
     Print('%s%s', [aColor, AMsg]);
 
   WaitForAnyKey();
-  WriteLn;
+  PrintLn();
 end;
 
 class function  TConsole.WrapTextEx(const ALine: string; AMaxCol: Integer; const ABreakChars: TCharSet): string;
@@ -1881,7 +2880,6 @@ end;
 
 initialization
   ReportMemoryLeaksOnShutdown := True;
-  TConsole.CreateInstance();
 
 finalization
 

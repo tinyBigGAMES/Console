@@ -15,7 +15,8 @@
 
 program Testbed;
 
-{$APPTYPE CONSOLE}
+//{$APPTYPE CONSOLE}
+{$APPTYPE GUI}
 
 {$R *.res}
 
@@ -33,10 +34,5 @@ uses
   Console.Sprite in '..\..\src\Console.Sprite.pas';
 
 begin
-  try
-    RunTests();
-  except
-    on E: Exception do
-      Writeln(E.ClassName, ': ', E.Message);
-  end;
+  RunTests();
 end.
