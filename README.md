@@ -26,11 +26,16 @@
 uses Console;
 
 begin
-  TConsole.ClearScreen();
-  TConsole.SetTitle('Demo');
-  TConsole.PrintLn('Welcome to Console!');
-  TConsole.Teletype(CSIFGGreen+'Simulated output... one char at a time.');
-  TConsole.WaitForAnyKey();
+  TConsole.Init('My Console', POS_CENTER, POS_CENTER, 110, 30, 20);
+  try
+    TConsole.ClearScreen();
+    TConsole.SetTitle('Demo');
+    TConsole.PrintLn('Welcome to Console!');
+    TConsole.Teletype(CSIFGGreen+'Simulated output... one char at a time.');
+    TConsole.WaitForAnyKey();
+  except
+    TConsole.Shutdown();
+  end;
 end.
 ```
 
